@@ -1,0 +1,15 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+
+# Java / Gradle
+.gradle/
+build/
+out/
+
+# OS / editor
+.vscode/
+.DS_Store
