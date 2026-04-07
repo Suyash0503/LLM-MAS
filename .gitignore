@@ -1,0 +1,13 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+
+# Java / Gradle
+.gradle/
+build/
+
+# VS Code
+.vscode/
