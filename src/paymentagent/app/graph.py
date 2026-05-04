@@ -50,10 +50,10 @@ def classify_request(state: PaymentState):
     return state
 
 
-def run_agent(state: PaymentState):
+async def run_agent(state: PaymentState):
     logger.info("[Graph] Executing PaymentAgent")
 
-    state["result"] = agent.run(
+    state["result"] = await agent.run(
         query=state["query"],
         currency_code=state.get("currency_code", "USD"),
         units=state.get("units", 0),
