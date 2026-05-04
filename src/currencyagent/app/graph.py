@@ -15,6 +15,9 @@ class CurrencyState(TypedDict):
     nanos: Optional[int]
     route: str
     result: dict
+    total_input_tokens: int
+    total_output_tokens: int
+    total_llm_calls: int
 
 
 agent = CurrencyAgent()
@@ -41,6 +44,21 @@ Return only one label.
 
     logger.debug("Invoking LLM for classification")
     response = llm.invoke(prompt)
+
+    usage = getattr(response, "usage_metadata", {}) or {}
+
+    input_tokens = usage.get("input_tokens", 0)
+    output_tokens = usage.get("output_tokens", 0)
+    total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
+
+    print(f"TOKEN_METRICS input={input_tokens} output={output_tokens} total={total_tokens}")
+
+    state["total_input_tokens"] = state.get("total_input_tokens", 0) + input_tokens
+    state["total_output_tokens"] = state.get("total_output_tokens", 0) + output_tokens
+    state["total_llm_calls"] = state.get("total_llm_calls", 0) + 1
+
+    with open("token_log.txt", "a") as f:
+     f.write(f"{total_tokens}\n")
     label = response.content.strip().lower()
     logger.info(f"LLM classification result: '{label}'")
 
@@ -70,6 +88,14 @@ def run_agent(state: CurrencyState):
             nanos=state.get("nanos", 0),
             to_currency=state.get("to_currency", "EUR")
         )
+
+    # ADD THIS BLOCK HERE (before return)
+    state["result"]["total_input_tokens"] = state.get("total_input_tokens", 0)
+    state["result"]["total_output_tokens"] = state.get("total_output_tokens", 0)
+    state["result"]["total_llm_calls"] = state.get("total_llm_calls", 0)
+    state["result"]["total_tokens"] = (
+        state.get("total_input_tokens", 0) + state.get("total_output_tokens", 0)
+    )
 
     logger.info(f"run_agent completed | action={state['result']['action']}")
     return state

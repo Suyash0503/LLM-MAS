@@ -15,7 +15,10 @@ class RecommendationState(TypedDict):
     product_ids: list[str]                  # required: products currently in cart/view
     route: str                              # classify_request sets this
     raw_result: dict                        # run_agent sets this
-    result: dict                            # final response (possibly LLM-enriched)
+    result: dict  
+    total_input_tokens: int
+    total_output_tokens: int
+    total_llm_calls: int                          # final response (possibly LLM-enriched)
 
 
 # ---------------------------------------------------------------------------
@@ -29,6 +32,31 @@ llm = get_ollama_llm()
 # ---------------------------------------------------------------------------
 # Nodes
 # ---------------------------------------------------------------------------
+
+
+def add_token_metrics(state: RecommendationState, response):
+    usage = getattr(response, "usage_metadata", {}) or {}
+
+    input_tokens = usage.get("input_tokens", 0)
+    output_tokens = usage.get("output_tokens", 0)
+    total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
+
+    print(f"TOKEN_METRICS input={input_tokens} output={output_tokens} total={total_tokens}")
+
+    state["total_input_tokens"] = state.get("total_input_tokens", 0) + input_tokens
+    state["total_output_tokens"] = state.get("total_output_tokens", 0) + output_tokens
+    state["total_llm_calls"] = state.get("total_llm_calls", 0) + 1
+
+    with open("token_log.txt", "a") as f:
+        f.write(f"{total_tokens}\n")
+
+def attach_token_metrics(state: RecommendationState):
+    state["result"]["total_input_tokens"] = state.get("total_input_tokens", 0)
+    state["result"]["total_output_tokens"] = state.get("total_output_tokens", 0)
+    state["result"]["total_llm_calls"] = state.get("total_llm_calls", 0)
+    state["result"]["total_tokens"] = (
+        state.get("total_input_tokens", 0) + state.get("total_output_tokens", 0)
+    )
 
 def classify_request(state: RecommendationState) -> RecommendationState:
     """
@@ -44,6 +72,9 @@ def classify_request(state: RecommendationState) -> RecommendationState:
     # Fast path: no query text → plain fetch
     if not query:
         state["route"] = "get_recommendations"
+        state["total_input_tokens"] = state.get("total_input_tokens", 0)
+        state["total_output_tokens"] = state.get("total_output_tokens", 0)
+        state["total_llm_calls"] = state.get("total_llm_calls", 0)
         return state
 
     prompt = f"""
@@ -62,6 +93,9 @@ Return only one label, nothing else.
 """.strip()
 
     response = llm.invoke(prompt)
+
+    add_token_metrics(state, response)
+
     label = response.content.strip().lower()
 
     if "explain" in label:
@@ -110,6 +144,9 @@ products could be a good match for the customer. Be concise and positive.
 """.strip()
 
     response = llm.invoke(prompt)
+
+    add_token_metrics(state, response)
+    
     explanation = response.content.strip()
 
     state["result"] = {

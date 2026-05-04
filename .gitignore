@@ -13,3 +13,17 @@ out/
 # OS / editor
 .vscode/
 .DS_Store
+# Token + logs
+token_log.txt
+*.log
+
+# Python
+__pycache__/
+*.pyc
+
+# Env
+.env
+
+# Build (Go / C#)
+bin/
+obj/

@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Hipstershop;
+using System.IO;
 
 namespace cartservice;
 
@@ -146,8 +147,28 @@ Respond with exactly this JSON and nothing else:
 
         // Ollama returns {"response": "...", ...}
         using var doc = JsonDocument.Parse(body);
-        if (doc.RootElement.TryGetProperty("response", out var resp))
-            return resp.GetString() ?? string.Empty;
+var root = doc.RootElement;
+
+// ✅ TOKEN EXTRACTION
+int inputTokens = root.TryGetProperty("prompt_eval_count", out var promptEval)
+    ? promptEval.GetInt32()
+    : 0;
+
+int outputTokens = root.TryGetProperty("eval_count", out var eval)
+    ? eval.GetInt32()
+    : 0;
+
+int totalTokens = inputTokens + outputTokens;
+
+//  PRINT (for terminal logs)
+Console.WriteLine($"TOKEN_METRICS input={inputTokens} output={outputTokens} total={totalTokens}");
+
+// FILE LOG (used by your experiment scripts)
+File.AppendAllText("token_log.txt", totalTokens + Environment.NewLine);
+
+// RETURN MODEL RESPONSE
+if (root.TryGetProperty("response", out var resp))
+    return resp.GetString() ?? string.Empty;
 
         return body;
     }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -47,10 +48,9 @@ type ToolCall struct {
 //	Arguments string `json:"arguments"`
 //}
 
-
 type FunctionCall struct {
-    Name      string          `json:"name"`
-    Arguments json.RawMessage `json:"arguments"`  // ? accepts both string and object
+	Name      string          `json:"name"`
+	Arguments json.RawMessage `json:"arguments"` // ? accepts both string and object
 }
 
 // chatRequest is the body sent to /api/chat.
@@ -66,6 +66,9 @@ type chatResponse struct {
 	Message    Message `json:"message"`
 	Done       bool    `json:"done"`
 	DoneReason string  `json:"done_reason,omitempty"`
+
+	PromptEvalCount int `json:"prompt_eval_count"`
+	EvalCount       int `json:"eval_count"`
 }
 
 // Client talks to a running Ollama instance.
@@ -89,49 +92,60 @@ func New(baseURL, model string) *Client {
 // Chat sends messages to the model and returns the assistant reply.
 // It does NOT run the tool loop  that lives in the agent.
 func (c *Client) Chat(ctx context.Context, messages []Message, tools []ToolDefinition) (*Message, error) {
-    body := chatRequest{
-        Model:    c.model,
-        Messages: messages,
-        Tools:    tools,
-        Stream:   false,
-    }
+	body := chatRequest{
+		Model:    c.model,
+		Messages: messages,
+		Tools:    tools,
+		Stream:   false,
+	}
 
-    data, err := json.Marshal(body)
-    if err != nil {
-        return nil, fmt.Errorf("marshal chat request: %w", err)
-    }
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal chat request: %w", err)
+	}
 
-    // DEBUG: Log the request size and start time
-    startTime := time.Now()
-    fmt.Printf("[Ollama Debug] Sending request to %s/api/chat | Model: %s | Messages: %d | Payload Size: %d bytes\n", 
-        c.baseURL, c.model, len(messages), len(data))
+	// DEBUG: Log the request size and start time
+	startTime := time.Now()
+	fmt.Printf("[Ollama Debug] Sending request to %s/api/chat | Model: %s | Messages: %d | Payload Size: %d bytes\n",
+		c.baseURL, c.model, len(messages), len(data))
 
-    req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/chat", bytes.NewReader(data))
-    if err != nil {
-        return nil, fmt.Errorf("create request: %w", err)
-    }
-    req.Header.Set("Content-Type", "application/json")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/chat", bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
 
-    resp, err := c.httpClient.Do(req)
-    if err != nil {
-        // DEBUG: Capture how long it took before failing
-        duration := time.Since(startTime)
-        return nil, fmt.Errorf("ollama request failed after %v: %w", duration, err)
-    }
-    defer resp.Body.Close()
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		// DEBUG: Capture how long it took before failing
+		duration := time.Since(startTime)
+		return nil, fmt.Errorf("ollama request failed after %v: %w", duration, err)
+	}
+	defer resp.Body.Close()
 
-    duration := time.Since(startTime)
-    fmt.Printf("[Ollama Debug] Received response in %v | Status: %s\n", duration, resp.Status)
+	duration := time.Since(startTime)
+	fmt.Printf("[Ollama Debug] Received response in %v | Status: %s\n", duration, resp.Status)
 
-    if resp.StatusCode != http.StatusOK {
-        b, _ := io.ReadAll(resp.Body)
-        return nil, fmt.Errorf("ollama non-200 status %d: %s", resp.StatusCode, string(b))
-    }
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("ollama non-200 status %d: %s", resp.StatusCode, string(b))
+	}
 
-    var cr chatResponse
-    if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
-        return nil, fmt.Errorf("decode chat response: %w", err)
-    }
+	var cr chatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
+		return nil, fmt.Errorf("decode chat response: %w", err)
+	}
+	inputTokens := cr.PromptEvalCount
+	outputTokens := cr.EvalCount
+	totalTokens := inputTokens + outputTokens
 
-    return &cr.Message, nil
+	fmt.Printf("TOKEN_METRICS input=%d output=%d total=%d\n", inputTokens, outputTokens, totalTokens)
+
+	f, err := os.OpenFile("token_log.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err == nil {
+		defer f.Close()
+		fmt.Fprintf(f, "%d\n", totalTokens)
+	}
+
+	return &cr.Message, nil
 }

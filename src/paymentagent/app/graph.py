@@ -18,7 +18,9 @@ class PaymentState(TypedDict):
     credit_card_expiration_month: Optional[int]
     route: str
     result: dict
-
+    total_input_tokens: int
+    total_output_tokens: int
+    total_llm_calls: int
 
 agent = PaymentAgent()
 llm = get_llama_llm()
@@ -40,6 +42,19 @@ def classify_request(state: PaymentState):
     """.strip()
 
     response = llm.invoke(prompt)
+    usage = getattr(response, "usage_metadata", {}) or {}
+    input_tokens = usage.get("input_tokens", 0)
+    output_tokens = usage.get("output_tokens", 0)
+    total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
+
+    print(f"TOKEN_METRICS input={input_tokens} output={output_tokens} total={total_tokens}")
+
+    state["total_input_tokens"] = state.get("total_input_tokens", 0) + input_tokens
+    state["total_output_tokens"] = state.get("total_output_tokens", 0) + output_tokens
+    state["total_llm_calls"] = state.get("total_llm_calls", 0) + 1
+
+    with open("token_log.txt", "a") as f:
+        f.write(f"{total_tokens}\n")
     label = response.content.strip().lower()
 
     if "charge" in label:
@@ -63,6 +78,16 @@ def run_agent(state: PaymentState):
         credit_card_expiration_year=state.get("credit_card_expiration_year", 0),
         credit_card_expiration_month=state.get("credit_card_expiration_month", 0)
     )
+
+    state["result"] = agent.run(...)
+
+    state["result"]["total_input_tokens"] = state.get("total_input_tokens", 0)
+    state["result"]["total_output_tokens"] = state.get("total_output_tokens", 0)
+    state["result"]["total_llm_calls"] = state.get("total_llm_calls", 0)
+    state["result"]["total_tokens"] = (
+     state.get("total_input_tokens", 0) + state.get("total_output_tokens", 0)
+)
+
     
     logger.info("[Graph] Execution completed")
 

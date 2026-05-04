@@ -128,7 +128,21 @@ class ShippingOrchestrator:
             )
             resp.raise_for_status()
             data = resp.json()
-            return data["choices"][0]["message"]["content"].strip()
+
+            content = data["choices"][0]["message"]["content"].strip()
+
+            usage = data.get("usage", {})
+
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
+            total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
+
+            print(f"TOKEN_METRICS input={input_tokens} output={output_tokens} total={total_tokens}")
+
+            with open("token_log.txt", "a") as f:
+             f.write(f"{total_tokens}\n")
+
+            return content
         except requests.exceptions.ConnectionError as e:
             raise RuntimeError(
                 f"Cannot reach Llama endpoint at {self.base_url}. "
