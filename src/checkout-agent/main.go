@@ -8,8 +8,12 @@ import (
 	"time"
 
 	"checkoutservice-agent/agent"
+	"checkoutservice-agent/database"
 	pb "checkoutservice-agent/genproto"
+
 	"github.com/sirupsen/logrus"
+	"go.mongodb.org/mongo-driver/v2/bson"
+
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -58,7 +62,43 @@ func (s *checkoutServiceServer) List(_ context.Context, _ *healthpb.HealthListRe
 
 func (s *checkoutServiceServer) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (*pb.PlaceOrderResponse, error) {
 	log.Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
-	return s.agent.PlaceOrder(ctx, req)
+
+	start := time.Now()
+
+	resp, err := s.agent.PlaceOrder(ctx, req)
+
+	statusValue := "SUCCESS"
+	errorMsg := ""
+
+	if err != nil {
+		statusValue = "FAILED"
+		errorMsg = err.Error()
+	}
+
+	orderID := ""
+	if resp != nil && resp.Order != nil {
+		orderID = resp.Order.OrderId
+	}
+
+	_, dbErr := database.OrdersCollection.InsertOne(
+		ctx,
+		bson.D{
+			{Key: "order_id", Value: orderID},
+			{Key: "user_id", Value: req.UserId},
+			{Key: "user_currency", Value: req.UserCurrency},
+			{Key: "status", Value: statusValue},
+			{Key: "error", Value: errorMsg},
+			{Key: "latency_ms", Value: time.Since(start).Milliseconds()},
+			{Key: "order_response", Value: resp},
+			{Key: "created_at", Value: time.Now()},
+		},
+	)
+
+	if dbErr != nil {
+		log.Errorf("failed to save checkout order to MongoDB: %v", dbErr)
+	}
+
+	return resp, err
 }
 
 func mustGetEnv(key, fallback string) string {
@@ -80,6 +120,18 @@ func main() {
 		OllamaAddr:         mustGetEnv("OLLAMA_ADDR", "http://ollama:11434"),
 		OllamaModel:        mustGetEnv("OLLAMA_MODEL", "llama3.2:1b"),
 	}
+
+	mongoURI := mustGetEnv(
+		"MONGO_URI",
+		"mongodb+srv://suyash:TLMNp4JsCMqcKKcr@cluster0.hwx3xea.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0",
+	)
+
+	err := database.ConnectMongo(mongoURI)
+	if err != nil {
+		log.Fatalf("failed to connect MongoDB: %v", err)
+	}
+
+	log.Infof("MongoDB connected successfully")
 
 	checkoutAgent, err := agent.New(cfg, log)
 	if err != nil {
