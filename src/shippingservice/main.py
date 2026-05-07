@@ -9,6 +9,7 @@ import os
 import asyncio
 import logging
 import signal
+import threading
 from concurrent import futures
 
 import grpc
@@ -35,8 +36,19 @@ class ShippingServicer(demo_pb2_grpc.ShippingServiceServicer):
     """
 
     def __init__(self):
+        self.loop = asyncio.new_event_loop()
+        self.loop_thread = threading.Thread(
+            target=self.loop.run_forever,
+            daemon=True
+        )
+        self.loop_thread.start()
+
         self.orchestrator = ShippingOrchestrator()
         log.info("ShippingServicer initialized with agent orchestrator")
+
+    def run_async(self, coro):
+        future = asyncio.run_coroutine_threadsafe(coro, self.loop)
+        return future.result()
 
     def GetQuote(self, request, context):
         log.info("GetQuote called")
@@ -48,15 +60,25 @@ class ShippingServicer(demo_pb2_grpc.ShippingServiceServicer):
                 "country": request.address.country,
                 "zip_code": request.address.zip_code,
             }
+
             items = [
                 {"product_id": item.product_id, "quantity": item.quantity}
                 for item in request.items
             ]
-            result = self.orchestrator.quote_agent.estimate(address, items)
+
+            result = self.run_async(self.orchestrator.get_quote(address, items))
+
             units = int(result["cost_usd"])
             nanos = int(round((result["cost_usd"] - units) * 1e9))
+
             return demo_pb2.GetQuoteResponse(
-                cost_usd=demo_pb2.Money(currency_code="USD",units=units,nanos=nanos,))
+                cost_usd=demo_pb2.Money(
+                    currency_code="USD",
+                    units=units,
+                    nanos=nanos,
+                )
+            )
+
         except Exception as e:
             log.error(f"GetQuote failed: {e}")
             context.set_code(grpc.StatusCode.INTERNAL)
@@ -79,7 +101,7 @@ class ShippingServicer(demo_pb2_grpc.ShippingServiceServicer):
                 for item in request.items
             ]
 
-            result = asyncio.run(self.orchestrator.ship_order(address, items))
+            result = self.run_async(self.orchestrator.ship_order(address, items))
 
             return demo_pb2.ShipOrderResponse(tracking_id=result["tracking_id"])
         except Exception as e:

@@ -1,0 +1,15 @@
+{
+  "address": {
+    "street_address": "1455 Boulevard de Maisonneuve Ouest",
+    "city": "Montreal",
+    "state": "QC",
+    "country": "Canada",
+    "zip_code": "12345"
+  },
+  "items": [
+    {
+      "product_id": "SUNGLASSES-CLASSIC-BLACK",
+      "quantity": 2
+    }
+  ]
+}

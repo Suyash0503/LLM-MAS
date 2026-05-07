@@ -148,6 +148,21 @@ def run_test(n=5):
 
         print("Match:", is_match)
 
+        # DB validation logic 
+        db = get_agent_db_count()
+        print("DB Count:", db)
+
+        if agent["success"]:
+            if db.get("count", 0) == 1:
+                print("DB OK (transaction stored)")
+            else:
+                print("DB ERROR (missing insert)")
+        else:
+            if db.get("count", 0) == 0:
+                print("DB OK (no insert)")
+            else:
+                print("DB ERROR (unexpected insert)")
+
         if is_match:
             success_count += 1
 

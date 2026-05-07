@@ -36,12 +36,12 @@ import requests
 from agents.quote_agent import QuoteAgent
 from agents.carrier_agent import CarrierSelectionAgent
 from agents.tracking_agent import TrackingAgent
-from repository import save_quote, save_shipment   # ← new
+from repository import save_quote, save_shipment
+from config import LLAMA_BASE_URL, LLAMA_MODEL
+
 
 log = logging.getLogger(__name__)
 
-LLAMA_BASE_URL = os.environ.get("LLAMA_BASE_URL", "http://ollama:/v1")
-LLAMA_MODEL    = os.environ.get("LLAMA_MODEL", "llama3:latest")
 
 MAX_ITERATIONS = 8
 MAX_TOKENS     = 512

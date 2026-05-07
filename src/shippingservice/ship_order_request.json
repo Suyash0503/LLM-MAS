@@ -1,0 +1,23 @@
+{
+  "address": {
+    "street_address": "2155 Rue Guy",
+    "city": "Montreal",
+    "state": "QC",
+    "country": "Canada",
+    "zip_code": "67890"
+  },
+  "items": [
+    {
+      "product_id": "SUNGLASSES-CLASSIC-BLACK",
+      "quantity": 2
+    },
+    {
+      "product_id": "HAT-DENIM-BLUE",
+      "quantity": 1
+    },
+    {
+      "product_id": "TOTE-BAG-CANVAS",
+      "quantity": 1
+    }
+  ]
+}
