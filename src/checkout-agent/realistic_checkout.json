@@ -1,0 +1,18 @@
+{
+  "user_id": "customer-1001",
+  "user_currency": "USD",
+  "address": {
+    "street_address": "1450 De Maisonneuve Blvd W",
+    "city": "Montreal",
+    "state": "QC",
+    "country": "Canada",
+    "zip_code": 10001
+  },
+  "email": "customer1001@example.com",
+  "credit_card": {
+    "credit_card_number": "4444444444444444",
+    "credit_card_cvv": 672,
+    "credit_card_expiration_year": 2030,
+    "credit_card_expiration_month": 12
+  }
+}
