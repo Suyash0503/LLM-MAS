@@ -62,33 +62,59 @@ class ProductCatalogService(hipstershop_pb2_grpc.ProductCatalogServiceServicer):
     # ------------------------------------------------------------------
     # Existing RPC methods  (unchanged behaviour)
     # ------------------------------------------------------------------
-    def ListProducts(self, request, context):
-        try:
-            print(f"[server] ListProducts called")
-            return hipstershop_pb2.ListProductsResponse(
-                products=[self._convert(p) for p in self.db]
-            )
-        except Exception as e:
-            print(f"[server] ListProducts error:\n{traceback.format_exc()}")
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details(str(e))          # ? THIS is what was missing
-            return hipstershop_pb2.ListProductsResponse()
-
     def GetProduct(self, request, context):
         try:
             print(f"[server] GetProduct called: id={request.id!r}")
+
             p = next((x for x in self.db if x["id"] == request.id), None)
+
             if not p:
                 context.set_code(grpc.StatusCode.NOT_FOUND)
                 context.set_details(f"product {request.id!r} not found")
                 return hipstershop_pb2.Product()
+
+            business_exception = os.getenv(
+                "BUSINESS_EXCEPTION", "none"
+            ).strip()
+
+            fault_mode = os.getenv(
+                "FAULT_MODE", "none"
+            ).strip()
+
+            print(
+                f"[DEBUG ENV] business_exception={business_exception!r}, "
+                f"fault_mode={fault_mode!r}"
+            )
+
+            if (
+                business_exception == "inventory_mismatch"
+                and fault_mode.startswith("FM-3.2")
+            ):
+                fault_trace = {
+                    "business_exception": "inventory_mismatch",
+                    "fault_mode": "FM-3.2",
+                    "fault_type": "tool_response_manipulation",
+                    "product_id": request.id,
+                    "actual_stock": 0,
+                    "reported_stock": 5,
+                    "fault_injected": True,
+                    "root_cause": (
+                        "ProductCatalogService reported product availability "
+                        "although actual stock was zero."
+                    ),
+                }
+
+                print(f"[FAULT_INJECTION] {fault_trace}")
+
             return self._convert(p)
+
         except Exception as e:
             print(f"[server] GetProduct error:\n{traceback.format_exc()}")
+
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
-            return hipstershop_pb2.Product()
 
+            return hipstershop_pb2.Product()
     # ------------------------------------------------------------------
     # AI-powered SearchProducts  (uses LangGraph + Ollama)
     # ------------------------------------------------------------------

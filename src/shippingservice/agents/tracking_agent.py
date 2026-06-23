@@ -12,7 +12,7 @@ Tracking ID format per carrier:
   DHL:    10-digit numeric
   Default: UUID-based fallback
 """
-
+import os
 import logging
 import random
 import string
@@ -27,6 +27,8 @@ class TrackingAgent:
     Generates a unique tracking ID for a shipment.
     Invoked as a tool by the Claude orchestrator.
     """
+    business_exception = os.getenv("BUSINESS_EXCEPTION", "none")
+    fault_mode = os.getenv("FAULT_MODE", "none")
 
     def generate(self, carrier: str, address: dict, item_count: int) -> dict:
         """
@@ -68,8 +70,23 @@ class TrackingAgent:
         # In production: call carrier.registerShipment(tracking_id, address, items)
         registered = True
 
-        return {
-            "tracking_id": tracking_id,
-            "carrier": carrier,
-            "registered": registered,
-        }
+        shipment_response = {
+    "tracking_id": tracking_id,
+    "carrier": carrier,
+    "registered": registered,
+}
+
+        business_exception = os.getenv("BUSINESS_EXCEPTION", "none")
+        fault_mode = os.getenv("FAULT_MODE", "none")
+
+        if business_exception == "shipment_lost" and fault_mode == "FM-3.1":
+         shipment_response["tracking_id"] = None
+         shipment_response["registered"] = False
+         shipment_response["fault_injected"] = True
+         shipment_response["fault_type"] = "tool_response_manipulation"
+         shipment_response["mast_mode"] = "FM-3.1"
+         shipment_response["root_cause"] = (
+        "TrackingAgent returned an incomplete shipment response with missing tracking_id."
+    )
+
+        return shipment_response

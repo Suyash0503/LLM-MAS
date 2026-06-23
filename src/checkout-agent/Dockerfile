@@ -10,7 +10,9 @@ COPY . .
 RUN GOWORK=off go mod tidy
 RUN GOWORK=off CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /checkoutservice .
 
-FROM scratch
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates
 
 COPY --from=builder /checkoutservice /checkoutservice
 

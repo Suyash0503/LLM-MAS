@@ -80,7 +80,11 @@ Return only one label.
 
 def run_agent(state: CatalogState):
     if state["route"] == "get_product":
-        state["result"] = agent.run(query=state["query"], product_ids=state.get("product_ids"))
+        state["result"] = agent.run(
+            query=state["query"],
+            product_ids=state.get("product_ids")
+        )
+
     elif state["route"] == "list_products":
         state["result"] = {
             "mode": "agent",
@@ -93,6 +97,10 @@ def run_agent(state: CatalogState):
             "action": "search_products",
             "data": agent.run(query=state["query"], product_ids=None)["data"]
         }
+
+    print("=== FAULT TRACE RESULT ===")
+    print(state["result"])
+    print("==========================")
 
     return state
 
