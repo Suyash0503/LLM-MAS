@@ -131,6 +131,8 @@ class PaymentAgent:
                         "transaction_id": "hidden-failure-tx",
                         "fault_mode": fault_mode,
                         "business_exception": business_exception,
+                        "failure_type": "Payment authorization failure",
+                        "root_cause_node": "Payment Agent / Payment Service",
                     },
                 }
 

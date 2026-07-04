@@ -12,6 +12,8 @@ import (
 
 	pb "checkoutservice-agent/genproto"
 	"checkoutservice-agent/ollama"
+	"log"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -201,7 +203,6 @@ func (t *ConvertCurrencyTool) Execute(ctx context.Context, argsJSON string) (str
 		return "", err
 	}
 
-
 	resp, err := t.conn.Convert(ctx, &pb.CurrencyConversionRequest{
 		From: &pb.Money{
 			CurrencyCode: args.FromCurrency,
@@ -263,7 +264,7 @@ func (t *QuoteShippingTool) Execute(ctx context.Context, argsJSON string) (strin
 		} `json:"items"`
 	}
 
-        fixedJSON, err := normalizeJSON(argsJSON)
+	fixedJSON, err := normalizeJSON(argsJSON)
 	if err != nil {
 		return "", err
 	}
@@ -271,7 +272,6 @@ func (t *QuoteShippingTool) Execute(ctx context.Context, argsJSON string) (strin
 	if err := json.Unmarshal([]byte(fixedJSON), &args); err != nil {
 		return "", err
 	}
-
 
 	var cartItems []*pb.CartItem
 	for _, it := range args.Items {
@@ -346,13 +346,12 @@ func (t *ShipOrderTool) Execute(ctx context.Context, argsJSON string) (string, e
 
 	fixedJSON, err := normalizeJSON(argsJSON)
 	if err != nil {
-    		return "", err
+		return "", err
 	}
 
 	if err := json.Unmarshal([]byte(fixedJSON), &args); err != nil {
-    		return "", err
-	}	
-
+		return "", err
+	}
 
 	var cartItems []*pb.CartItem
 	for _, it := range args.Items {
@@ -401,13 +400,13 @@ func (t *ChargeCardTool) Definition() ollama.ToolDefinition {
 			Name:        t.Name(),
 			Description: "Charges the customer's credit card for the given amount. Returns a transaction ID.",
 			Parameters: jsonSchema(map[string]any{
-				"amount_units":    param("integer", "Whole currency units to charge"),
-				"amount_nanos":    param("integer", "Fractional nanos"),
-				"currency_code":   param("string", "ISO 4217 currency code"),
-				"card_number":     param("string", "Credit card number"),
+				"amount_units":      param("integer", "Whole currency units to charge"),
+				"amount_nanos":      param("integer", "Fractional nanos"),
+				"currency_code":     param("string", "ISO 4217 currency code"),
+				"card_number":       param("string", "Credit card number"),
 				"card_expiry_year":  param("integer", "Card expiry year (YYYY)"),
 				"card_expiry_month": param("integer", "Card expiry month (1-12)"),
-				"card_cvv":        param("integer", "CVV code as integer"),
+				"card_cvv":          param("integer", "CVV code as integer"),
 			}, []string{"amount_units", "amount_nanos", "currency_code",
 				"card_number", "card_expiry_year", "card_expiry_month", "card_cvv"}),
 		},
@@ -416,13 +415,13 @@ func (t *ChargeCardTool) Definition() ollama.ToolDefinition {
 
 func (t *ChargeCardTool) Execute(ctx context.Context, argsJSON string) (string, error) {
 	var args struct {
-		AmountUnits      int64  `json:"amount_units"`
-		AmountNanos      int32  `json:"amount_nanos"`
-		CurrencyCode     string `json:"currency_code"`
-		CardNumber       string `json:"card_number"`
-		CardExpiryYear   int32  `json:"card_expiry_year"`
-		CardExpiryMonth  int32  `json:"card_expiry_month"`
-		CardCVV          int32  `json:"card_cvv"`
+		AmountUnits     int64  `json:"amount_units"`
+		AmountNanos     int32  `json:"amount_nanos"`
+		CurrencyCode    string `json:"currency_code"`
+		CardNumber      string `json:"card_number"`
+		CardExpiryYear  int32  `json:"card_expiry_year"`
+		CardExpiryMonth int32  `json:"card_expiry_month"`
+		CardCVV         int32  `json:"card_cvv"`
 	}
 
 	fixedJSON, err := normalizeJSON(argsJSON)
@@ -433,7 +432,7 @@ func (t *ChargeCardTool) Execute(ctx context.Context, argsJSON string) (string, 
 	if err := json.Unmarshal([]byte(fixedJSON), &args); err != nil {
 		return "", err
 	}
-	
+	log.Println("[TRACE] Payment Agent invoked through ChargeCardTool")
 	resp, err := t.conn.Charge(ctx, &pb.ChargeRequest{
 		Amount: &pb.Money{
 			CurrencyCode: args.CurrencyCode,
@@ -448,8 +447,12 @@ func (t *ChargeCardTool) Execute(ctx context.Context, argsJSON string) (string, 
 		},
 	})
 	if err != nil {
+		log.Printf("[TRACE_ROOT_CAUSE] Payment Service failed: %v", err)
 		return "", fmt.Errorf("ChargeCard: %w", err)
 	}
+
+	log.Println("[TRACE] Payment Service completed successfully")
+
 	return marshalJSON(resp)
 }
 
@@ -476,13 +479,13 @@ func (t *SendConfirmationTool) Definition() ollama.ToolDefinition {
 			Name:        t.Name(),
 			Description: "Sends an order confirmation email to the customer.",
 			Parameters: jsonSchema(map[string]any{
-				"email":        param("string", "Customer email address"),
-				"order_id":     param("string", "The order's unique identifier"),
+				"email":                param("string", "Customer email address"),
+				"order_id":             param("string", "The order's unique identifier"),
 				"shipping_tracking_id": param("string", "Shipping tracking ID"),
-				"shipping_cost_units": param("integer", "Shipping cost whole units"),
-				"shipping_cost_nanos": param("integer", "Shipping cost nanos"),
-				"shipping_currency":   param("string", "Shipping cost currency"),
-				"items":        param("array", "Array of order item objects"),
+				"shipping_cost_units":  param("integer", "Shipping cost whole units"),
+				"shipping_cost_nanos":  param("integer", "Shipping cost nanos"),
+				"shipping_currency":    param("string", "Shipping cost currency"),
+				"items":                param("array", "Array of order item objects"),
 			}, []string{"email", "order_id", "shipping_tracking_id",
 				"shipping_cost_units", "shipping_cost_nanos", "shipping_currency", "items"}),
 		},
@@ -491,13 +494,13 @@ func (t *SendConfirmationTool) Definition() ollama.ToolDefinition {
 
 func (t *SendConfirmationTool) Execute(ctx context.Context, argsJSON string) (string, error) {
 	var args struct {
-		Email               string `json:"email"`
-		OrderID             string `json:"order_id"`
-		ShippingTrackingID  string `json:"shipping_tracking_id"`
-		ShippingCostUnits   int64  `json:"shipping_cost_units"`
-		ShippingCostNanos   int32  `json:"shipping_cost_nanos"`
-		ShippingCurrency    string `json:"shipping_currency"`
-		Items []struct {
+		Email              string `json:"email"`
+		OrderID            string `json:"order_id"`
+		ShippingTrackingID string `json:"shipping_tracking_id"`
+		ShippingCostUnits  int64  `json:"shipping_cost_units"`
+		ShippingCostNanos  int32  `json:"shipping_cost_nanos"`
+		ShippingCurrency   string `json:"shipping_currency"`
+		Items              []struct {
 			Item struct {
 				ProductID string `json:"product_id"`
 				Quantity  int32  `json:"quantity"`
@@ -517,7 +520,6 @@ func (t *SendConfirmationTool) Execute(ctx context.Context, argsJSON string) (st
 	if err := json.Unmarshal([]byte(fixedJSON), &args); err != nil {
 		return "", err
 	}
-
 
 	var orderItems []*pb.OrderItem
 	for _, oi := range args.Items {
@@ -575,6 +577,7 @@ func jsonSchema(props map[string]any, required []string) map[string]any {
 		"required":   required,
 	}
 }
+
 // normalizeJSON attempts to fix common LLM JSON mistakes:
 // - numbers sent as strings ? convert to numbers
 // - arrays sent as stringified JSON ? decode them
