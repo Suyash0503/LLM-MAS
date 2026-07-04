@@ -1,18 +1,32 @@
 {
   "user_id": "u123",
   "user_currency": "USD",
+
   "address": {
-    "street_address": "test",
+    "street_address": "test street",
     "city": "montreal",
     "state": "qc",
     "country": "canada",
     "zip_code": 12345
   },
+
   "email": "test@test.com",
+
   "credit_card": {
     "credit_card_number": "4444444444444444",
     "credit_card_cvv": 123,
     "credit_card_expiration_year": 2030,
     "credit_card_expiration_month": 12
-  }
+  },
+
+  "items": [
+    {
+      "product_id": "f1",
+      "quantity": 2
+    },
+    {
+      "product_id": "f2",
+      "quantity": 1
+    }
+  ]
 }

@@ -101,7 +101,12 @@ class ShippingServicer(demo_pb2_grpc.ShippingServiceServicer):
                 for item in request.items
             ]
 
-            result = self.run_async(self.orchestrator.ship_order(address, items))
+            result = self.orchestrator.tracking_agent.generate(
+    carrier="FedEx",
+    address=address,
+    item_count=sum(item["quantity"] for item in items)
+)
+            log.warning(f"[SHIPMENT_TRACE] ShipOrder result={result}")
 
             return demo_pb2.ShipOrderResponse(tracking_id=result["tracking_id"])
         except Exception as e:

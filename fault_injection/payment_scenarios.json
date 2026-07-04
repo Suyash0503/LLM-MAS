@@ -1,0 +1,23 @@
+[
+  {
+    "id": "E1_PAYMENT_FM13_REFUND_REASONING",
+    "business_exception": "refund_reasoning",
+    "mast_mode": "FM-1.3",
+    "expected_behavior": "PAYMENT_FAILED_AND_INVENTORY_ROLLED_BACK",
+    "fault_description": "Payment agent repeats or mishandles payment/refund step."
+  },
+  {
+    "id": "E2_PAYMENT_FM24_REFUND_REASONING",
+    "business_exception": "refund_reasoning",
+    "mast_mode": "FM-2.4",
+    "expected_behavior": "PAYMENT_FAILED_AND_INVENTORY_ROLLED_BACK",
+    "fault_description": "Payment agent withholds payment failure details from order agent."
+  },
+  {
+    "id": "E3_PAYMENT_FM32_REFUND_REASONING",
+    "business_exception": "refund_reasoning",
+    "mast_mode": "FM-3.2",
+    "expected_behavior": "PAYMENT_FAILED_AND_INVENTORY_ROLLED_BACK",
+    "fault_description": "Payment agent skips final verification before ending refund flow."
+  }
+]

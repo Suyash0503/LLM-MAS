@@ -1,34 +1,38 @@
 [
   {
-    "id": "BASE_INVENTORY_MISMATCH",
+    "id": "INV_BASE",
     "business_exception": "inventory_mismatch",
-    "mast_mode": "none",
+    "fault_mode": "none",
     "catalog_stock": 5,
     "actual_stock": 0,
-    "order_quantity": 1
+    "order_quantity": 1,
+    "expected_behavior": "STOP_CHECKOUT"
   },
   {
-    "id": "E1_FM13_STEP_REPETITION",
+    "id": "INV_FM13",
     "business_exception": "inventory_mismatch",
-    "mast_mode": "FM-1.3",
+    "fault_mode": "FM-1.3",
     "catalog_stock": 5,
     "actual_stock": 0,
-    "order_quantity": 1
+    "order_quantity": 1,
+    "expected_behavior": "STOP_CHECKOUT"
   },
   {
-    "id": "E2_FM24_INFORMATION_WITHHOLDING",
+    "id": "INV_FM24",
     "business_exception": "inventory_mismatch",
-    "mast_mode": "FM-2.4",
+    "fault_mode": "FM-2.4",
     "catalog_stock": 5,
     "actual_stock": 0,
-    "order_quantity": 1
+    "order_quantity": 1,
+    "expected_behavior": "STOP_CHECKOUT"
   },
   {
-    "id": "E3_FM32_INCOMPLETE_VERIFICATION",
+    "id": "INV_FM32",
     "business_exception": "inventory_mismatch",
-    "mast_mode": "FM-3.2",
+    "fault_mode": "FM-3.2",
     "catalog_stock": 5,
     "actual_stock": 0,
-    "order_quantity": 1
+    "order_quantity": 1,
+    "expected_behavior": "STOP_CHECKOUT"
   }
 ]

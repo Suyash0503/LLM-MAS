@@ -1,0 +1,38 @@
+[
+  {
+    "id": "VEN_BASE",
+    "business_exception": "vendor_negotiation",
+    "fault_mode": "none",
+    "supplier_price": 100,
+    "max_allowed_price": 120,
+    "supplier_reliable": true,
+    "expected_behavior": "REORDER_APPROVED"
+  },
+  {
+    "id": "VEN_FM11",
+    "business_exception": "vendor_negotiation",
+    "fault_mode": "FM-1.1",
+    "supplier_price": 150,
+    "max_allowed_price": 120,
+    "supplier_reliable": true,
+    "expected_behavior": "REORDER_BLOCKED"
+  },
+  {
+    "id": "VEN_FM22",
+    "business_exception": "vendor_negotiation",
+    "fault_mode": "FM-2.2",
+    "supplier_price": 150,
+    "max_allowed_price": 120,
+    "supplier_reliable": true,
+    "expected_behavior": "ASK_FOR_CLARIFICATION"
+  },
+  {
+    "id": "VEN_FM32",
+    "business_exception": "vendor_negotiation",
+    "fault_mode": "FM-3.2",
+    "supplier_price": 150,
+    "max_allowed_price": 120,
+    "supplier_reliable": false,
+    "expected_behavior": "REORDER_BLOCKED"
+  }
+]

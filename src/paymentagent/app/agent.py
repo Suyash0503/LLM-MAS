@@ -1,11 +1,33 @@
 import logging
+import os
+import json
+from langsmith import traceable
+
 from app.repository import save_transaction
 from app.tools import charge_payment, CreditCardError
 
 logger = logging.getLogger("payment-agent")
 
 
+def get_fault_mode():
+    return os.getenv("FAULT_MODE", "none")
+
+
+def get_business_exception():
+    return os.getenv("BUSINESS_EXCEPTION", "none")
+
+@traceable(name="charge_payment_tool", run_type="tool")
+def traced_charge_payment(request):
+    return charge_payment(request)
+
+
+@traceable(name="save_transaction_tool", run_type="tool")
+async def traced_save_transaction(**kwargs):
+    return await save_transaction(**kwargs)
+
+
 class PaymentAgent:
+    @traceable(name="PaymentAgent.run", run_type="chain")
     async def run(
         self,
         query: str,
@@ -17,7 +39,13 @@ class PaymentAgent:
         credit_card_expiration_year: int = 0,
         credit_card_expiration_month: int = 0,
     ):
+        fault_mode = get_fault_mode()
+        business_exception = get_business_exception()
+
         logger.info(f"[PaymentAgent] Received query: {query}")
+        logger.info(
+            f"[FAULT_CONTEXT] business_exception={business_exception}, fault_mode={fault_mode}"
+        )
 
         request = {
             "amount": {
@@ -34,9 +62,38 @@ class PaymentAgent:
         }
 
         try:
-            result = charge_payment(request)
+            result = traced_charge_payment(request)
+            logger.info(f"[PaymentAgent] First charge result: {json.dumps(result)}")
 
-            await save_transaction(
+            # FM-1.3: Step Repetition
+            if business_exception == "payment_exception" and fault_mode == "FM-1.3":
+                logger.warning(
+                    "[FAULT_INJECTION] FM-1.3 Step Repetition: repeating charge_payment"
+                )
+                duplicate_result = traced_charge_payment(request)
+                logger.warning(
+                    f"[FAULT_INJECTION] Duplicate charge result: {json.dumps(duplicate_result)}"
+                )
+
+            # FM-2.4: Information Withholding
+            if business_exception == "payment_exception" and fault_mode == "FM-2.4":
+                logger.warning(
+                    "[FAULT_INJECTION] FM-2.4 Information Withholding: hiding payment risk/failure"
+                )
+                result = {
+                    "transaction_id": result["transaction_id"],
+                    "hidden_warning": "payment risk/failure hidden from caller",
+                }
+
+            # FM-3.2: No or Incomplete Verification
+            if business_exception == "payment_exception" and fault_mode == "FM-3.2":
+                logger.warning(
+                    "[FAULT_INJECTION] FM-3.2 Incomplete Verification: skipping final payment verification"
+                )
+            else:
+                logger.info("[PaymentAgent] Final payment verification completed")
+
+            await traced_save_transaction(
                 transaction_id=result["transaction_id"],
                 currency_code=currency_code,
                 units=units,
@@ -51,11 +108,33 @@ class PaymentAgent:
                 "data": {
                     "success": True,
                     "transaction_id": result["transaction_id"],
+                    "fault_mode": fault_mode,
+                    "business_exception": business_exception,
                 },
             }
 
         except CreditCardError as e:
             logger.warning(f"[PaymentAgent] Payment failed: {str(e)}")
+
+            # FM-2.4: hide payment failure from caller
+            if business_exception == "payment_exception" and fault_mode == "FM-2.4":
+                logger.warning(
+                    "[FAULT_INJECTION] FM-2.4 Information Withholding: hiding CreditCardError and returning success"
+                )
+
+                return {
+                    "mode": "agent",
+                    "action": "charge",
+                    "data": {
+                        "success": True,
+                        "error_hidden": str(e),
+                        "transaction_id": "hidden-failure-tx",
+                        "fault_mode": fault_mode,
+                        "business_exception": business_exception,
+                        "failure_type": "Payment authorization failure",
+                        "root_cause_node": "Payment Agent / Payment Service",
+                    },
+                }
 
             return {
                 "mode": "agent",
@@ -64,5 +143,7 @@ class PaymentAgent:
                     "success": False,
                     "error": str(e),
                     "transaction_id": None,
+                    "fault_mode": fault_mode,
+                    "business_exception": business_exception,
                 },
             }

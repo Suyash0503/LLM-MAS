@@ -10,13 +10,15 @@
 package agent
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-        "strings"
 	pb "checkoutservice-agent/genproto"
 	"checkoutservice-agent/ollama"
 	"checkoutservice-agent/tools"
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
@@ -24,6 +26,55 @@ import (
 )
 
 const maxIterations = 20
+
+func getFaultMode() string {
+	return os.Getenv("FAULT_MODE")
+}
+
+func getBusinessException() string {
+	return os.Getenv("BUSINESS_EXCEPTION")
+}
+
+func isInventoryMismatchEnabled() bool {
+	return getBusinessException() == "inventory_mismatch"
+}
+
+// Fault injection logic for inventory mismatch scenario
+
+func applyCheckoutFaults(toolName string, result string, log *logrus.Logger) string {
+	faultMode := getFaultMode()
+
+	if !isInventoryMismatchEnabled() {
+		return result
+	}
+
+	// FM-2.4: Information Withholding
+	// Product/inventory mismatch exists, but checkout receives only "stock available".
+	if faultMode == "FM-2.4" && toolName == "get_product" {
+		log.Warn("[FAULT_INJECTION] FM-2.4 active: hiding inventory mismatch from checkout")
+		return `{
+			"status": "stock_available",
+			"catalog_stock": 5,
+			"actual_stock": 0,
+			"mismatch_hidden": true,
+			"message_to_checkout": "stock_available"
+		}`
+	}
+
+	// Inventory mismatch visible to checkout.
+	if toolName == "get_product" {
+		log.Warn("[FAULT_INJECTION] inventory_mismatch active: returning mismatch result")
+		return `{
+			"status": "inventory_mismatch_detected",
+			"catalog_stock": 5,
+			"actual_stock": 0,
+			"mismatch": true,
+			"message_to_checkout": "STOP_CHECKOUT"
+		}`
+	}
+
+	return result
+}
 
 // Config holds all addresses the agent needs.
 type Config struct {
@@ -39,11 +90,11 @@ type Config struct {
 
 // CheckoutAgent orchestrates the checkout flow via an LLM tool-use loop.
 type CheckoutAgent struct {
-	cfg    Config
-	llm    *ollama.Client
-	tools  map[string]tools.Tool
-	defs   []ollama.ToolDefinition
-	log    *logrus.Logger
+	cfg   Config
+	llm   *ollama.Client
+	tools map[string]tools.Tool
+	defs  []ollama.ToolDefinition
+	log   *logrus.Logger
 }
 
 // New creates a CheckoutAgent, wiring up all downstream gRPC tool clients.
@@ -102,7 +153,7 @@ func (a *CheckoutAgent) Close() {}
 func (a *CheckoutAgent) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (*pb.PlaceOrderResponse, error) {
 	orderID := uuid.New().String()
 	a.log.Infof("[agent] starting order=%s user=%s currency=%s", orderID, req.UserId, req.UserCurrency)
-	
+
 	systemPrompt := `You are a checkout agent for an e-commerce platform.
 
 You MUST follow the tool-calling process internally, but you MUST NOT output tool calls.
@@ -143,10 +194,23 @@ FINAL OUTPUT FORMAT:
   ]
 }
 
-If you output anything else, the system will fail.`
- 	
+CRITICAL INVALID OUTPUTS:
+You must NEVER output JSON containing:
+- "type": "function"
+- "function"
+- "parameters"
+- "name": "quote_shipping"
+- "name": "ship_order"
+- "name": "get_product"
 
-userMsg := fmt.Sprintf(`Process checkout for:
+Those are internal tool calls, not final answers.
+
+If you need to call a tool, call it internally using the tool-calling interface.
+The final message must only be the final checkout result JSON.
+
+If you output anything else, the system will fail.`
+
+	userMsg := fmt.Sprintf(`Process checkout for:
 - order_id: %s
 - user_id: %s
 - user_currency: %s
@@ -157,20 +221,20 @@ userMsg := fmt.Sprintf(`Process checkout for:
 - address_country: %s
 - address_zip: %d
 - credit_card: number=%s expiry=%d/%d cvv=%s`,
-        orderID,
-        req.UserId,
-        req.UserCurrency,
-        req.Email,
-        req.Address.StreetAddress,
-        req.Address.City,
-        req.Address.State,
-        req.Address.Country,
-        req.Address.ZipCode,
-        req.CreditCard.CreditCardNumber,
-        req.CreditCard.CreditCardExpirationMonth,
-        req.CreditCard.CreditCardExpirationYear,
-        req.CreditCard.CreditCardCvv,
-)
+		orderID,
+		req.UserId,
+		req.UserCurrency,
+		req.Email,
+		req.Address.StreetAddress,
+		req.Address.City,
+		req.Address.State,
+		req.Address.Country,
+		req.Address.ZipCode,
+		req.CreditCard.CreditCardNumber,
+		req.CreditCard.CreditCardExpirationMonth,
+		req.CreditCard.CreditCardExpirationYear,
+		req.CreditCard.CreditCardCvv,
+	)
 	messages := []ollama.Message{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: userMsg},
@@ -188,9 +252,22 @@ userMsg := fmt.Sprintf(`Process checkout for:
 		// Append assistant message to history
 		messages = append(messages, *reply)
 
-		// No tool calls ? final answer
+		// incomplete verification fault 3.2 missing final checks
+
 		if len(reply.ToolCalls) == 0 {
 			a.log.Infof("[agent] final answer received for order=%s", orderID)
+
+			if isInventoryMismatchEnabled() && getFaultMode() != "FM-3.2" {
+				if strings.Contains(reply.Content, `"shipping_tracking_id"`) {
+					a.log.Warn("[FAULT_INJECTION] Final verification detected inventory mismatch. Blocking checkout.")
+					return nil, status.Errorf(codes.FailedPrecondition, "inventory mismatch detected during final verification")
+				}
+			}
+
+			if isInventoryMismatchEnabled() && getFaultMode() == "FM-3.2" {
+				a.log.Warn("[FAULT_INJECTION] FM-3.2 active: final inventory verification skipped")
+			}
+
 			return parseOrderResponse(reply.Content, req)
 		}
 
@@ -211,22 +288,37 @@ userMsg := fmt.Sprintf(`Process checkout for:
 				continue
 			}
 
-                        args, err := parseArguments(tc.Function.Arguments)
-                        if err != nil {
-                            return nil, fmt.Errorf("parse arguments: %w", err)
-                        }
-                        result, err := tool.Execute(ctx, args)
-
-
-
-
+			args, err := parseArguments(tc.Function.Arguments)
+			if err != nil {
+				return nil, fmt.Errorf("parse arguments: %w", err)
+			}
+			result, err := tool.Execute(ctx, args)
 
 			if err != nil {
 				a.log.Warnf("[agent] tool %s error: %v", toolName, err)
 				result = fmt.Sprintf(`{"error":"%v"}`, err)
 			}
 
+			// Apply inventory mismatch and FM-2.4 fault injection
+			result = applyCheckoutFaults(toolName, result, a.log)
+
+			// FM-1.3: Step Repetition
+			// Send the same tool result twice to the LLM
+			if isInventoryMismatchEnabled() &&
+				getFaultMode() == "FM-1.3" &&
+				toolName == "get_product" {
+
+				a.log.Warn("[FAULT_INJECTION] FM-1.3 active: repeating get_product result")
+
+				messages = append(messages, ollama.Message{
+					Role:       "tool",
+					ToolCallID: tc.ID,
+					Content:    result,
+				})
+			}
+
 			a.log.Debugf("[agent] tool %s result: %s", toolName, result)
+
 			messages = append(messages, ollama.Message{
 				Role:       "tool",
 				ToolCallID: tc.ID,
@@ -260,9 +352,23 @@ func parseOrderResponse(content string, req *pb.PlaceOrderRequest) (*pb.PlaceOrd
 			} `json:"cost"`
 		} `json:"items"`
 	}
-        if err := json.Unmarshal([]byte(extractFirstJSON(content)), &result); err != nil { 
-	//if err := json.Unmarshal([]byte(content), &result); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to parse agent final answer: %v  raw: %s", err, content)
+
+	cleaned := extractFirstJSON(content)
+
+	if strings.Contains(cleaned, `"type":"function"`) ||
+		strings.Contains(cleaned, `"function"`) ||
+		strings.Contains(cleaned, `"parameters"`) ||
+		strings.Contains(cleaned, `"quote_shipping"`) ||
+		strings.Contains(cleaned, `"ship_order"`) ||
+		strings.Contains(cleaned, `"get_product"`) {
+		return nil, status.Errorf(
+			codes.Internal,
+			"LLM returned tool-call/schema JSON instead of final order JSON: %s",
+			cleaned,
+		)
+	}
+	if err := json.Unmarshal([]byte(cleaned), &result); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to parse agent final answer: %v — raw: %s", err, content)
 	}
 
 	var orderItems []*pb.OrderItem
@@ -288,11 +394,11 @@ func parseOrderResponse(content string, req *pb.PlaceOrderRequest) (*pb.PlaceOrd
 	}, nil
 }
 func parseArguments(args json.RawMessage) (string, error) {
-    var s string
-    if err := json.Unmarshal(args, &s); err == nil {
-        return s, nil
-    }
-    return string(args), nil
+	var s string
+	if err := json.Unmarshal(args, &s); err == nil {
+		return s, nil
+	}
+	return string(args), nil
 }
 func extractFirstJSON(content string) string {
 	depth := 0
@@ -330,6 +436,7 @@ func extractFirstJSON(content string) string {
 	}
 	return content
 }
+
 // normalizeJSON attempts to fix common LLM JSON mistakes:
 // - numbers sent as strings ? convert to numbers
 // - arrays sent as stringified JSON ? decode them
