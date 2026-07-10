@@ -27,3 +27,6 @@ __pycache__/
 # Build (Go / C#)
 bin/
 obj/
+node_modules/
+dist/
+.env
