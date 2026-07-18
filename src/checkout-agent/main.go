@@ -121,9 +121,7 @@ func main() {
 		OllamaModel:        mustGetEnv("OLLAMA_MODEL", "llama3.2:1b"),
 	}
 
-	mongoURI := mustGetEnv(
-		"MONGO_URI",
-		"mongodb+srv://suyash:TLMNp4JsCMqcKKcr@cluster0.hwx3xea.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0",
+	mongoURI := os.Getenv("MONGO_URI")
 	)
 
 	err := database.ConnectMongo(mongoURI)
